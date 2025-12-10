@@ -13,13 +13,15 @@ RECORDED_MESSAGE_URL = os.getenv(
     "https://example.com/message.mp3"
 )
 
+# This will store the audio URL for the current call
+current_audio_url = None
+
 # Create Plivo client
 client = plivo.RestClient(PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN)
 
 
 @app.route("/", methods=["GET"])
 def home():
-    """Health check endpoint"""
     return jsonify(
         {
             "status": "running",
@@ -30,7 +32,6 @@ def home():
 
 @app.route("/webhook/test", methods=["POST"])
 def test_webhook():
-    """Simple test endpoint to verify server is working"""
     data = request.get_json() or {}
     return jsonify({"success": True, "received": data}), 200
 
@@ -44,7 +45,7 @@ def handle_crm_webhook():
     {
       "phone": "+12025551234",
       "name": "John Doe",
-      "audio_url": "https://example.com/message.mp3"  (optional)
+      "audio_url": "https://your-audio-url.mp3"  (optional)
     }
     """
     try:
@@ -52,6 +53,8 @@ def handle_crm_webhook():
 
         customer_phone = data.get("phone")
         customer_name = data.get("name", "Customer")
+
+        # 1) Take audio_url from JSON if present, else use default
         message_url = data.get("audio_url", RECORDED_MESSAGE_URL)
 
         if not customer_phone:
@@ -59,7 +62,11 @@ def handle_crm_webhook():
                 {"success": False, "error": "Phone number is required"}
             ), 400
 
-        # Initiate call via Plivo
+        # 2) Store this URL globally so /answer_call can use it
+        global current_audio_url
+        current_audio_url = message_url
+
+        # 3) Initiate call via Plivo
         response = client.calls.create(
             from_=PLIVO_PHONE,
             to_=customer_phone,
@@ -93,15 +100,21 @@ def handle_crm_webhook():
 @app.route("/answer_call", methods=["POST"])
 def answer_call():
     """
-    Tells Plivo what to do when the call is answered.
-    Plays the recorded message from RECORDED_MESSAGE_URL.
+    This is called by Plivo when the call is answered.
+    It will play the audio_url sent from the CRM webhook.
     """
     try:
+        global current_audio_url
+
+        # If for some reason current_audio_url is empty, use default
+        play_url = current_audio_url or RECORDED_MESSAGE_URL
+
         xml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{RECORDED_MESSAGE_URL}</Play>
+    <Play>{play_url}</Play>
 </Response>"""
         return xml_response, 200, {"Content-Type": "application/xml"}
+
     except Exception:
         error_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
