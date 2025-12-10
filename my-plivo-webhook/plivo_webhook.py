@@ -51,12 +51,10 @@ def handle_crm_webhook():
 
         # Initiate call via Plivo
         response = client.calls.create(
-            from_number=PLIVO_PHONE,
-            to_number=customer_phone,
-            # IMPORTANT: after deployment on Railway, update this URL
-            answer_url=os.getenv('ANSWER_URL', 'https://example.com/answer_call')
-        )
-
+    from_=PLIVO_PHONE,
+    to_=customer_phone,
+    answer_url=os.getenv('ANSWER_URL', 'https://example.com/answer_call')
+)
         return jsonify({
             'success': True,
             'message': f'Call initiated to {customer_name}',
